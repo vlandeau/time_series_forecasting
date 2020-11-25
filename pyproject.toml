@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "wiki_forecasting"
+version = "0.1.0"
+description = ""
+authors = ["victorlandeau <vlandeau@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+pandas = "^1.1.4"
+jupyter = "^1.0.0"
+tensorflow = "^2.3.1"
+plotly = "^4.12.0"
+seaborn = "^0.11.0"
+sklearn = "^0.0"
+jupytext = "^1.7.1"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
