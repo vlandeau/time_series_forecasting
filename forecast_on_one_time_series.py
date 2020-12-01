@@ -194,30 +194,18 @@ px.scatter(preds_vs_real, x="predictions", y="reality", color="model",
 # ## Visualize predictions vs reality as time series
 
 # %%
-x = np.array(window_data)[:, :-1].reshape(len(window_data), window_size - 1, 1)
-x_scaled = x / mean_clicks
-y = np.array(window_data)[:, -1]
-x.shape, y.shape
+days = df_one_page.columns[-len(preds_test):]
 
-# %%
-preds_without_scaling = model.predict(x)[:, 0]
-preds_with_scaling = model_scaled.predict(x_scaled)[:, 0] * mean_clicks
-preds_without_scaling.shape, preds_with_scaling.shape
-
-# %%
-preds_test.shape
-
-# %%
 fig = go.Figure(data=[go.Line(x=days, 
-                              y=clicks, 
+                              y=y_test, 
                               name="Number of clicks"),
                       go.Line(x=days, 
-                              y=preds_test, 
+                              y=preds_test[:, 0], 
                               name="Predictions with model not using scaling"),
                      go.Line(x=days, 
-                              y=preds_scaled_test, 
-                              name="Predictions with model using scaling")])
-fig.update_layout(title="title",
+                              y=preds_scaled_test[:, 0] * mean_clicks, 
+                              name="Predictions with model using global scaling")])
+fig.update_layout(title="Predictions vs reality on test set",
                    xaxis_title="Day",
                    yaxis_title="Clicks")
 

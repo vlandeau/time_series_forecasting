@@ -21,6 +21,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error
 from sklearn.ensemble import RandomForestRegressor
 import matplotlib.pyplot as plt
+import plotly.express as px
+import plotly.graph_objects as go
 # %matplotlib inline
 
 # %% [markdown]
@@ -105,15 +107,13 @@ no_scaling_model_history = model.fit(x_train_reshaped, y_train, validation_split
 def visualize_loss(history, title):
     loss = history.history["loss"]
     val_loss = history.history["val_loss"]
-    epochs = range(len(loss))
-    plt.figure()
-    plt.plot(epochs, loss, "b", label="Training loss")
-    plt.plot(epochs, val_loss, "r", label="Validation loss")
-    plt.title(title)
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.show()
+    epochs = list(range(len(loss)))
+    fig = go.Figure(data=[go.Scatter(x=epochs, y=loss, name="Training loss"),
+                   go.Scatter(x=epochs, y=val_loss, name="Validation loss")])
+    fig.update_layout(title=title,
+                       xaxis_title="Epoch",
+                       yaxis_title="Loss")
+    fig.show()
 
 
 # %%
@@ -239,112 +239,66 @@ preds_scaled_weighted_test = model_scaling_weights.predict(x_test_scaled_reshape
 mean_absolute_error(preds_scaled_weighted_test[:, 0] * df_test_means,
                     y_test)
 
+# %% [markdown]
+# # Visualize results
 
 # %% [markdown]
-# # Comparison with other models
+# ## Global visualization
+
+# %%
+preds_without_scaling_vs_real = pd.DataFrame({"predictions": preds_test[:, 0],
+                                             "reality": y_test})
+preds_with_global_scaling_vs_real = pd.DataFrame({"predictions": preds_global_scaling_test[:, 0] * train_mean,
+                                                 "reality": y_test})
+preds_with_window_scaling_vs_real = pd.DataFrame({"predictions": preds_scaled_test[:, 0] * df_test_means,
+                                                 "reality": y_test})
+preds_with_window_scaling_weights_vs_real = pd.DataFrame({"predictions": preds_scaled_weighted_test[:, 0] * df_test_means,
+                                                         "reality": y_test})
+
+preds_vs_real = pd.concat([preds_without_scaling_vs_real.assign(model="model_without_scaling"),
+                          preds_with_global_scaling_vs_real.assign(model="model_with_global_scaling"),
+                          preds_with_window_scaling_vs_real.assign(model="model_with_window_scaling"),
+                          preds_with_window_scaling_weights_vs_real.assign(model="model_with_window_scaling_and_weights")])
+preds_vs_real.head()
+
+# %%
+px.scatter(preds_vs_real, x="predictions", y="reality", color="model",
+          trendline="ols", title="Comparison of predictions and real values")
 
 # %% [markdown]
-# ## Dense model
+# ## Visualize predictions vs reality as time series
 
 # %%
-def get_ff_model(x_train):
-    input_layer = tf.keras.layers.Input((x_train.shape[1]))
-    dense_1 = tf.keras.layers.Dense(256, activation="relu")(input_layer)
-    dense_2 = tf.keras.layers.Dense(64, activation="relu")(dense_1)
-    dense_3 = tf.keras.layers.Dense(16, activation="relu")(dense_2)
-    dense_4 = tf.keras.layers.Dense(4, activation="relu")(dense_3)
-    output_layer = tf.keras.layers.Dense(1, activation="relu")(dense_3)
-    model = tf.keras.Model(inputs=input_layer, outputs=output_layer)
-    model.compile(optimizer=tf.keras.optimizers.RMSprop(), loss="mae")
-    return model
-
+df_test_with_predictions = x_test.assign(model_without_scaling=preds_test[:, 0],
+                                         model_with_global_scaling=preds_global_scaling_test[:, 0] * train_mean,
+                                         model_with_window_scaling=preds_scaled_test[:, 0] * df_test_means,
+                                         model_with_window_scaling_and_weights=preds_scaled_weighted_test[:, 0] * df_test_means)
 
 # %%
-ff_model = get_ff_model(x_train)
+df_test_with_predictions.head()
 
 # %%
-early_stopping = tf.keras.callbacks.EarlyStopping(patience=20,
-                                                 restore_best_weights=True)
-
-ff_model_history = ff_model.fit(x_train, y_train, validation_split=0.1,
-                                  batch_size=128, epochs=1000,
-                                callbacks=early_stopping)
+sample = df_test_with_predictions.sample(1)
+sample
 
 # %%
-visualize_loss(ff_model_history, 
-               "Training of a feedforward model");
-
-# %%
-preds_ff_test = ff_model.predict(x_test)
-mean_absolute_error(preds_ff_test[:, 0], y_test)
-
-# %% [markdown]
-# ## Random forest without feature engineering
-
-# %%
-rf = RandomForestRegressor(criterion="mae", n_jobs=10, max_depth=4,
-                          n_estimators=20)
-rf.fit(x_train, y_train)
-
-# %%
-preds_rf_test = rf.predict(x_test)
-mean_absolute_error(preds_rf_test, y_test)
-
-
-# %% [markdown]
-# ## Attention model
-
-# %% [markdown]
-# ### Unscaled
-
-# %%
-def get_attention_model(x_train_reshaped):
-    input_layer = tf.keras.layers.Input((x_train_reshaped.shape[1], x_train_reshaped.shape[2]))
-    query_layer = tf.keras.layers.LSTM(32, return_sequences=True)(input_layer)
-    value_layer = tf.keras.layers.LSTM(32, return_sequences=True)(input_layer)
-    attention_layer = tf.keras.layers.Attention()([query_layer, value_layer])
-    dense_layer = tf.keras.layers.Dense(1)(attention_layer)
-    model = tf.keras.Model(inputs=input_layer, outputs=dense_layer)
-    model.compile(optimizer=tf.keras.optimizers.RMSprop(), loss="mae")
-    return model
-
-
-# %%
-attention_model = get_attention_model(x_train_reshaped)
-early_stopping = tf.keras.callbacks.EarlyStopping(patience=20,
-                                                 restore_best_weights=True)
-attention_model_history = attention_model.fit(x_train_reshaped, y_train, validation_split=0.1,
-                                             batch_size=128, epochs=500,
-                                             callbacks=early_stopping)
-
-# %%
-visualize_loss(attention_model_history, 
-               "Training of a LSTM model with attention");
-
-# %%
-preds_attention_test = attention_model.predict(x_test_reshaped)
-mean_absolute_error(preds_attention_test[:, 0].reshape(-1),
-                    y_test)
-
-# %% [markdown]
-# ### Scaled
-
-# %%
-attention_scaling_model = get_attention_model(x_train_scaled_reshaped)
-early_stopping = tf.keras.callbacks.EarlyStopping(patience=20,
-                                                 restore_best_weights=True)
-attention_scaling_model_history = attention_scaling_model.fit(
-    x_train_scaled_reshaped, y_train_scaled, validation_split=0.1,
-     batch_size=128, epochs=500,
-     callbacks=early_stopping)
-
-# %%
-visualize_loss(attention_scaling_model_history, 
-               "Training of a LSTM model with attention and scaling");
-
-# %%
-preds_attention_scaling_test = attention_scaling_model.predict(x_test_scaled_reshaped)
-mean_absolute_error(preds_attention_scaling_test[:, 0].reshape(-1) * df_test_means,
-                    y_test)
+fig = go.Figure(data=[go.Line(x=x_test.columns, 
+                              y=sample[x_test.columns].values[0], 
+                              name="Number of clicks"),
+                      go.Scatter(x=[x_test.columns[-1]], 
+                              y=[sample["model_without_scaling"].values[0]], 
+                              name="Predictions with model not using scaling"),
+                      go.Scatter(x=[x_test.columns[-1]], 
+                              y=[sample["model_with_global_scaling"].values[0]], 
+                              name="Predictions with model with global scaling"),
+                      go.Scatter(x=[x_test.columns[-1]], 
+                              y=[sample["model_with_window_scaling"].values[0]], 
+                              name="Predictions with model with window scaling"),
+                      go.Scatter(x=[x_test.columns[-1]], 
+                              y=[sample["model_with_window_scaling_and_weights"].values[0]], 
+                              name="Predictions with model with window scaling and weights")])
+fig.update_layout(title="Visualization of models predictions on one time",
+                   xaxis_title="Day",
+                   yaxis_title="Clicks")
 
 # %%
